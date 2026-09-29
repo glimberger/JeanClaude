@@ -40,24 +40,11 @@ C'est précisément le rôle d'un RAG.
 prompt (*augmentation*), puis le LLM **génère** sa réponse en s'appuyant sur eux
 (*generation*).
 
-```
-                    ┌──────────────────────────┐
-  "J'ai peur        │ 1. RETRIEVAL             │   3 citations
-   d'échouer"  ───► │ chercher les citations   │ ───────────────┐
-                    │ les plus proches         │                │
-                    └──────────────────────────┘                ▼
-                                                  ┌──────────────────────────┐
-                                                  │ 2. AUGMENTATION          │
-                                                  │ prompt = persona         │
-                                                  │        + citations       │
-                                                  │        + message         │
-                                                  └────────────┬─────────────┘
-                                                               ▼
-                                                  ┌──────────────────────────┐
-                                                  │ 3. GENERATION (LLM)      │
-                                                  │ réponse dans le style    │
-                                                  │ de JCVD                  │
-                                                  └──────────────────────────┘
+```mermaid
+flowchart LR
+    Q["« J'ai peur d'échouer »"] --> R["<b>1. Retrieval</b><br>chercher les citations<br>les plus proches"]
+    R -- "3 citations" --> A["<b>2. Augmentation</b><br>prompt = persona<br>+ citations + message"]
+    A --> G["<b>3. Generation (LLM)</b><br>réponse dans le style<br>de JCVD"]
 ```
 
 Les étapes 2 et 3 sont simples : elles se résument à construire une chaîne de caractères et
@@ -292,9 +279,10 @@ Un RAG se décompose en deux phases qu'il convient de ne pas confondre.
 
 **Indexation (hors ligne, une seule fois)** : on prépare la base.
 
-```
-citations_jcvd.md ──► jcvd ingest ──► citations.json ──► jcvd index ──► data/chroma/
-   (89 blocs)          (nettoyage)      (72 citations)   (vectorisation)     (index)
+```mermaid
+flowchart LR
+    MD["citations_jcvd.md<br>(89 blocs)"] -- "jcvd ingest<br>(nettoyage)" --> JSON["citations.json<br>(72 citations)"]
+    JSON -- "jcvd index<br>(vectorisation)" --> DB[("data/chroma/<br>(index)")]
 ```
 
 Cette phase n'est relancée que si les citations changent. La vectorisation de millions de
@@ -303,9 +291,14 @@ question.
 
 **Interrogation (en ligne, à chaque message)** : on exploite la base.
 
+```mermaid
+flowchart LR
+    M[message] --> V[vectoriser] --> K[3 plus proches voisins] --> P[prompt augmenté] --> L[LLM] --> Rep[réponse]
+    DB[("data/chroma/")] -.-> K
 ```
-message ──► vectoriser ──► 3 plus proches voisins ──► prompt augmenté ──► LLM ──► réponse
-```
+
+La flèche en pointillés indique que la recherche des voisins lit l'index produit lors de la
+phase d'indexation, sans le modifier.
 
 ---
 
