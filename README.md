@@ -296,6 +296,7 @@ permanence.
 JeanClaude/
 ├── pyproject.toml / uv.lock     dépendances et commande `jcvd` (gérées par uv)
 ├── .env.example                 modèle du fichier de secrets (.env, non versionné)
+├── LICENSE                      licence MIT
 ├── data/
 │   ├── citations_jcvd.md        source brute (à éditer)
 │   ├── citations.json           généré par `jcvd ingest`
@@ -333,6 +334,13 @@ Les tests remplacent le modèle d'embeddings et le modèle de langage (Claude ou
 de faux objets : c'est possible parce que `JCVDBot` accepte qu'on lui passe son `retriever`
 et son `client` (*injection de dépendances*). Ils vérifient le nettoyage des citations, la gestion des
 historiques et le comportement du bot Telegram.
+
+## Licence
+
+Le code est sous licence [MIT](LICENSE) : tu peux le réutiliser, le modifier et le
+redistribuer librement, en conservant la mention de copyright. Les citations de
+`data/citations_jcvd.md` appartiennent à Jean-Claude Van Damme et ne sont pas couvertes par
+cette licence.
 
 ## Pour aller plus loin
 

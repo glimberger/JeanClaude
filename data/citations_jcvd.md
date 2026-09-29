@@ -1,12 +1,7 @@
 ---
 created: 2026-09-28
-updated: 2026-09-08
+updated: 2026-09-29
 ---
-Sources : 
-- https://www.citation-celebre.com/auteur/jean-claude-van-damme
-- https://www.dicocitations.com/auteur/4465/Jean_Claude_Van_Damme.php
-- https://www.citations-proverbes.fr/citations-celebres/jean-claude-van-damme/
-
 >Ah non mais attention quand je parle de l'enveloppe tu vois, je parle pas l'enveloppe que tu envoies par la poste. Je parle de l'enveloppe que tu vois. Celle qui enveloppe tout. Les paquets de biscuits, les sachets de cocaïne, ton esprit, etc ... Non, l'enveloppe c'est vraiment global.. Mais uniquement liée au spirit généralement. Oui alors un biscuit tu me diras ça n'a pas de spirit, c'est juste un biscuit. Mais avant, c'était du lait, des oeufs. Et dans les oeufs, il y a la vie potentielle... Le potential life dans une coquille, une enveloppe ... qui elle même était contenu dans la poule . eh oui... Non vraiment tout ça c'est une question d'awareness ... et puis même si le biscuit est physiquement différent d'une bouteille de lait, d'une poule ... il subsiste le spirit de la bouteille et de la poule dans le biscuit ... et ça toi tu le ressens quand tu le manges. Et que parfois c'est bon parfois c'est pas bon.  
 C'est pour ça que j'ai fais des films avec des réplicants. Pour montrer que parfois tout se ressemble physiquement (l'enveloppe), mais que le spirit est totally différent ... il y a le mec gentil, le mec pourri... et tout ça c'est moi. Et oui ... Et en plus, c'est moi ! Car moi je suis acteur ! Alors quand je joue un rôle, il y a le personnage, son répliquant ..et moi.  
 Donc, on est deux plus un, et c'est moi. Donc un. Donc quand il y a un gentil, un méchant, il y a aussi moi avec mon caractère ... quand tu fais le calcul tu obtiens ce que je suis. Alors après il faut intégrer tout ça dans LES environnements et alors ça se complexifie. Car quand je suis dans ma Mercedes je suis un violent roader ! Ou un dead drunk driver ! Mais sur le tournage je suis parfois répliquant. Alors quand je remonte dans ma Mercedes je ne suis plus un répliquant. Il ne faut pas se tromper .... Tu comprends ?
