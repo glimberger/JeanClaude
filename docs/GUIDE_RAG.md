@@ -1,39 +1,44 @@
 # Comprendre le RAG avec le bot JCVD
 
 Ce guide s'adresse à un·e développeur·se qui n'a jamais construit de RAG. Il suppose que tu
-sais programmer en Python et que tu sais vaguement ce qu'est un LLM (un modèle comme Claude
-qui génère du texte). Rien d'autre.
+maîtrises Python et que tu connais, au moins dans les grandes lignes, ce qu'est un LLM (un
+modèle, tel que Claude, qui génère du texte). Aucune autre connaissance préalable n'est
+requise.
 
-Tous les chiffres et exemples ci-dessous ont été obtenus en exécutant le code du projet.
-Tu peux les reproduire.
+Tous les chiffres et exemples présentés ci-dessous proviennent d'exécutions réelles du code
+du projet ; tu peux donc les reproduire.
 
 ---
 
 ## 1. Le problème de départ
 
-On veut un bot qui parle comme Jean-Claude Van Damme. Première idée : demander à Claude
-« fais comme JCVD ». Ça marche un peu, mais Claude va produire une imitation générique,
-et on n'a aucun contrôle sur ce qui est « vraiment » JCVD.
+L'objectif est de construire un bot qui s'exprime comme Jean-Claude Van Damme. Une première
+approche consiste à demander simplement à Claude d'imiter JCVD. Le résultat est partiellement
+satisfaisant : Claude produit une imitation générique, et l'on ne maîtrise pas ce qui relève
+réellement du style de JCVD.
 
-Deuxième idée : donner à Claude de vraies citations en exemple. C'est mieux. Mais lesquelles ?
-Si l'utilisateur parle d'amour, les citations sur l'air ou les cacahuètes aident peu. Il faut
-donc, **à chaque message**, choisir les citations qui correspondent au sujet.
+Une deuxième approche consiste à fournir à Claude de véritables citations en guise
+d'exemples. Le résultat est meilleur, mais une question se pose : lesquelles choisir ? Si
+l'utilisateur évoque l'amour, les citations consacrées à l'air ou aux cacahuètes lui sont de
+peu d'utilité. Il faut donc, **pour chaque message**, sélectionner les citations qui
+correspondent au sujet abordé.
 
-C'est exactement ce que fait un RAG.
+C'est précisément le rôle d'un RAG.
 
-> **Remarque honnête.** Avec 72 citations, on pourrait tout simplement les mettre *toutes*
-> dans le prompt : ça tiendrait largement dans le contexte de Claude. Le RAG devient
-> indispensable quand la base est grande (des milliers de documents, une documentation
-> interne, des tickets…). Ici, le petit corpus sert à apprendre le mécanisme sur un exemple
-> que tu peux entièrement lire et vérifier.
+> **Précision.** Avec 72 citations, il serait tout à fait possible de les inclure *toutes*
+> dans le prompt : elles tiendraient largement dans le contexte de Claude. Le RAG devient
+> indispensable lorsque la base est volumineuse (des milliers de documents, une
+> documentation interne, des tickets, etc.). Ici, ce corpus restreint sert à étudier le
+> mécanisme sur un exemple que tu peux lire et vérifier intégralement.
 
 ---
 
 ## 2. Le RAG en une phrase
 
 **RAG** = *Retrieval-Augmented Generation* : avant de demander à un LLM de répondre, on
-**cherche** (*retrieval*) les documents pertinents dans une base, on les **ajoute** au prompt
-(*augmentation*), puis le LLM **génère** sa réponse en s'appuyant dessus (*generation*).
+**recherche** (*retrieval*) les documents pertinents dans une base, on les **ajoute** au
+prompt (*augmentation*), puis le LLM **génère** sa réponse en s'appuyant sur eux
+(*generation*).
 
 ```
                     ┌──────────────────────────┐
@@ -55,17 +60,18 @@ C'est exactement ce que fait un RAG.
                                                   └──────────────────────────┘
 ```
 
-Les étapes 2 et 3 sont simples : c'est de la construction de chaîne de caractères et un appel
-d'API. Toute la difficulté est dans l'étape 1 : **comment trouver les textes « proches » d'une
-question ?** C'est l'objet des deux sections suivantes.
+Les étapes 2 et 3 sont simples : elles se résument à construire une chaîne de caractères et
+à effectuer un appel d'API. Toute la difficulté réside dans l'étape 1 : **comment identifier
+les textes « proches » d'une question ?** Les deux sections suivantes traitent de cette
+question.
 
 ---
 
 ## 3. Pourquoi la recherche par mots-clés ne suffit pas
 
-L'approche naïve : garder les citations qui contiennent les mots de la question.
+L'approche naïve consiste à retenir les citations qui contiennent les mots de la question.
 
-Pour « Comment devenir meilleur ? », en cherchant le mot « meilleur », on obtient :
+Pour « Comment devenir meilleur ? », une recherche sur le mot « meilleur » renvoie :
 
 ```
 "Le Cycle... le cycle du cosmos dans la vie... [...] je suis le meilleur... Mais en vérité,
@@ -74,13 +80,15 @@ Pour « Comment devenir meilleur ? », en cherchant le mot « meilleur », on ob
 "Ma femme n'est pas ma meilleure partenaire sexuelle, mais elle fait très bien le ménage."
 ```
 
-Deux problèmes :
+Cette approche présente deux défauts :
 
-- **Faux positif** : la troisième citation contient le mot, mais n'a rien à voir avec le sujet.
-- **Faux négatif** : la citation idéale, « Ma devise, c'est : il faut se recréer, pour
-  recréer ! », ne contient aucun mot de la question. Elle est invisible.
+- **Faux positif** : la troisième citation contient le mot recherché, mais n'a aucun
+  rapport avec le sujet.
+- **Faux négatif** : la citation la plus pertinente, « Ma devise, c'est : il faut se
+  recréer, pour recréer ! », ne contient aucun mot de la question. Elle reste donc invisible.
 
-Les mots ne sont qu'un indice du sens. Il faut une façon de comparer **le sens** de deux textes.
+Les mots ne constituent qu'un indice du sens. Il faut disposer d'un moyen de comparer **le
+sens** de deux textes.
 
 ---
 
@@ -88,35 +96,37 @@ Les mots ne sont qu'un indice du sens. Il faut une façon de comparer **le sens*
 
 ### L'intuition
 
-Imagine une carte où chaque phrase serait un point, placée de sorte que les phrases qui
-parlent de la même chose soient voisines. « Comment devenir meilleur ? » serait près de
-« Comment progresser ? », et loin de « La bourse a chuté ».
+Imagine une carte sur laquelle chaque phrase serait représentée par un point, et où les
+phrases traitant du même sujet seraient voisines. « Comment devenir meilleur ? » se
+trouverait près de « Comment progresser ? », et loin de « La bourse a chuté ».
 
-Un **embedding** est la position d'un texte sur une telle carte. Sauf qu'au lieu de 2
-coordonnées (x, y), il en a des centaines : ici **384**. Un modèle de machine learning,
-entraîné sur d'énormes quantités de textes, a appris à placer les phrases de sens proche à des
-positions proches.
+Un **embedding** correspond à la position d'un texte sur une telle carte, à ceci près
+qu'au lieu de deux coordonnées (x, y), il en compte plusieurs centaines : **384** dans ce
+projet. Un modèle d'apprentissage automatique (*machine learning*), entraîné sur de très
+grandes quantités de textes, a appris à placer les phrases de sens voisin à des positions
+proches.
 
-Concrètement, c'est une liste de nombres :
+Concrètement, un embedding est une liste de nombres :
 
 ```python
 >>> model.encode("Je suis aware.")
 [0.245, -0.284, 0.076, 0.054, 0.083, 0.099, ...]   # 384 nombres au total
 ```
 
-Chaque nombre pris isolément ne veut rien dire pour un humain. Seules les **comparaisons**
-entre vecteurs ont un sens.
+Pris isolément, chacun de ces nombres n'a aucune signification pour un humain. Seules les
+**comparaisons** entre vecteurs ont un sens.
 
-Le nombre de dimensions (384) n'est pas un réglage : il est fixé par le modèle choisi.
-D'autres modèles produisent 768, 1024 ou 3072 dimensions.
+Le nombre de dimensions (384) n'est pas un paramètre réglable : il est déterminé par le
+modèle choisi. D'autres modèles produisent des vecteurs de 768, 1024 ou 3072 dimensions.
 
 ### Comparer deux vecteurs : la similarité cosinus
 
-On mesure si deux vecteurs « pointent dans la même direction » avec la **similarité
-cosinus** : proche de 1, même sens ; proche de 0, aucun rapport. Son calcul, et pourquoi on
-la préfère à la distance euclidienne, sont détaillés juste après.
+Pour déterminer si deux vecteurs « pointent dans la même direction », on utilise la
+**similarité cosinus** : une valeur proche de 1 indique un sens similaire, une valeur proche
+de 0 l'absence de rapport. Son calcul, ainsi que les raisons pour lesquelles on la préfère à
+la distance euclidienne, sont détaillés ci-après.
 
-Scores réels avec le modèle du projet :
+Scores réels obtenus avec le modèle du projet :
 
 | Phrase A | Phrase B | Similarité |
 |---|---|---|
@@ -126,20 +136,22 @@ Scores réels avec le modèle du projet :
 | Comment devenir meilleur ? | Si tu parles à ton eau de Javel […], elle est moins concentrée. | 0,140 |
 | Le chat dort sur le canapé | La bourse a chuté de 3 % | 0,067 |
 
-Trois choses à retenir :
+Trois enseignements s'en dégagent :
 
-1. **Le sens compte, pas les mots.** « se recréer » est reconnu comme proche de « devenir
-   meilleur » sans aucun mot commun.
-2. **Le modèle est multilingue.** Une phrase et sa traduction anglaise sont presque identiques
-   (0,97). C'est utile ici, car JCVD mélange le français et l'anglais.
-3. **Les scores absolus dépendent du modèle.** Ici, une citation pertinente obtient
-   typiquement entre 0,3 et 0,6, pas 0,9 (conséquence pour le seuil : voir section 8).
+1. **C'est le sens qui compte, et non les mots.** « se recréer » est reconnu comme proche
+   de « devenir meilleur », sans aucun mot en commun.
+2. **Le modèle est multilingue.** Une phrase et sa traduction anglaise obtiennent des
+   vecteurs presque identiques (0,97). Cette propriété est utile ici, car JCVD mêle le
+   français et l'anglais.
+3. **Les scores absolus dépendent du modèle.** Dans ce projet, une citation pertinente
+   obtient généralement un score compris entre 0,3 et 0,6, et non de l'ordre de 0,9 (pour
+   les conséquences sur le choix du seuil, voir la section 8).
 
 ### Distance euclidienne ou cosinus : quelle différence ?
 
-Il existe deux façons courantes de dire si deux vecteurs sont « proches ». Pour les
-comprendre, oublions les 384 dimensions et plaçons trois vecteurs sur un plan à 2 dimensions,
-tous partant de l'origine O :
+Il existe deux manières courantes d'évaluer la proximité de deux vecteurs. Pour les
+comprendre, laissons de côté les 384 dimensions et plaçons trois vecteurs dans un plan à
+deux dimensions, tous issus de l'origine O :
 
 ```
   y
@@ -154,27 +166,29 @@ tous partant de l'origine O :
 A et B pointent **dans la même direction** ; B est simplement trois fois plus long. C pointe
 dans une direction perpendiculaire.
 
-**La distance euclidienne** (appelée aussi distance L2) est la distance « à vol d'oiseau »
-entre les pointes des deux flèches. On la calcule comme en géométrie au collège : racine
-carrée de la somme des carrés des écarts, coordonnée par coordonnée.
+**La distance euclidienne** (ou distance L2) est la distance en ligne droite entre les
+extrémités des deux flèches. Elle se calcule comme en géométrie élémentaire : racine carrée
+de la somme des carrés des écarts, coordonnée par coordonnée.
 
 - A ↔ B : √((3 − 1)² + (0 − 0)²) = **2**
 - A ↔ C : √((0 − 1)² + (1 − 0)²) = √2 ≈ **1,41**
 
-Selon elle, A est plus proche de C que de B.
+Selon cette mesure, A est plus proche de C que de B.
 
-**La similarité cosinus** ne regarde que **l'angle** entre les deux flèches, pas leur
-longueur. C'est le cosinus de cet angle : 1 si elles pointent dans la même direction
-(angle de 0°), 0 si elles sont perpendiculaires (90°), −1 si elles sont opposées (180°).
-On la calcule avec le produit scalaire divisé par le produit des longueurs.
+**La similarité cosinus** ne tient compte que de **l'angle** entre les deux flèches, et non
+de leur longueur. Elle correspond au cosinus de cet angle : 1 lorsque les flèches pointent
+dans la même direction (angle de 0°), 0 lorsqu'elles sont perpendiculaires (90°), −1
+lorsqu'elles sont opposées (180°). On la calcule en divisant le produit scalaire par le
+produit des longueurs.
 
 - A ↔ B : angle de 0°, similarité **1**
 - A ↔ C : angle de 90°, similarité **0**
 
-Selon elle, A et B sont identiques, et A n'a rien à voir avec C. La **distance cosinus**
-est simplement `1 − similarité` : 0 pour des vecteurs de même direction, 2 au maximum.
+Selon cette mesure, A et B sont équivalents, et A n'a aucun rapport avec C. La **distance
+cosinus** se définit simplement comme `1 − similarité` : elle vaut 0 pour des vecteurs de
+même direction, et 2 au maximum.
 
-Tu peux vérifier ces chiffres toi-même :
+Tu peux vérifier ces valeurs toi-même :
 
 ```python
 import numpy as np
@@ -192,14 +206,14 @@ print(cosinus(A, B), cosinus(A, C))          # 1.0  0.0
 ```
 
 **Pourquoi le cosinus convient mieux au texte.** Dans un embedding, c'est la **direction**
-qui porte le sens (de quoi parle le texte). La **longueur** varie pour d'autres raisons
-(longueur du texte, mots très fréquents…) qui n'ont rien à voir avec le sujet. La distance
-euclidienne mélange les deux ; le cosinus ne garde que la direction. Avec notre modèle, la
-longueur des vecteurs de citations varie de **2,94 à 4,87** : ce n'est pas un détail
-négligeable.
+qui porte le sens (le sujet du texte). La **longueur** varie pour d'autres raisons (longueur
+du texte, présence de mots très fréquents, etc.) sans lien avec le sujet. La distance
+euclidienne combine ces deux composantes ; le cosinus ne conserve que la direction. Avec le
+modèle du projet, la longueur des vecteurs de citations varie de **2,94 à 4,87** : cet écart
+n'est pas négligeable.
 
-Sur notre jeu d'évaluation (voir section 9), mesuré avec les deux distances (la ligne
-« Cosinus » correspond à la recherche actuelle) :
+Sur le jeu d'évaluation (voir la section 9), les mesures obtenues avec les deux distances
+sont les suivantes (la ligne « Cosinus » correspond à la recherche actuelle) :
 
 | Distance | facile hit@3 (MRR) | difficile hit@3 (MRR) |
 |---|---|---|
@@ -208,17 +222,18 @@ Sur notre jeu d'évaluation (voir section 9), mesuré avec les deux distances (l
 
 L'écart est faible, mais il va dans le sens attendu.
 
-**Le cas des vecteurs normalisés.** Beaucoup de modèles d'embeddings « normalisent » leurs
-vecteurs : ils les ramènent tous à une longueur de 1. Dans ce cas, les deux distances
-donnent exactement le même classement, car pour des vecteurs de longueur 1, le carré de la
-distance euclidienne vaut `2 − 2 × cosinus`. Notre modèle ne normalise pas ses vecteurs :
-le choix de la distance compte donc.
+**Le cas des vecteurs normalisés.** De nombreux modèles d'embeddings « normalisent » leurs
+vecteurs, c'est-à-dire qu'ils les ramènent tous à une longueur de 1. Dans ce cas, les deux
+distances produisent exactement le même classement, car pour des vecteurs de longueur 1, le
+carré de la distance euclidienne vaut `2 − 2 × cosinus`. Le modèle du projet ne normalise
+pas ses vecteurs : le choix de la distance a donc une incidence.
 
 ### Dans le projet
 
-Le modèle est `paraphrase-multilingual-MiniLM-L12-v2`, de la librairie sentence-transformers.
-Il tourne **en local** sur ta machine : pas de clé API, pas de coût. On ne peut pas utiliser
-Claude pour cette étape, car Anthropic ne propose pas d'API d'embeddings.
+Le modèle retenu est `paraphrase-multilingual-MiniLM-L12-v2`, issu de la bibliothèque
+sentence-transformers. Il s'exécute **en local** sur ta machine : il ne requiert ni clé
+API, ni frais d'utilisation. Claude ne peut pas être utilisé pour cette étape, car
+Anthropic ne propose pas d'API d'embeddings.
 
 Il est déclaré dans `src/jcvd_bot/config.py` :
 
@@ -230,19 +245,19 @@ EMBEDDING_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
 
 ## 5. La base vectorielle : retrouver les voisins rapidement
 
-On a maintenant un moyen de comparer une question à une citation. Pour trouver les 3
-citations les plus proches, il suffirait de calculer la similarité avec les 72 citations et de
-trier. Avec 72 textes, c'est instantané.
+On dispose désormais d'un moyen de comparer une question à une citation. Pour obtenir les
+3 citations les plus proches, il suffirait de calculer la similarité avec chacune des 72
+citations, puis de trier les résultats. Avec 72 textes, l'opération est instantanée.
 
-Une **base de données vectorielle** fait ce travail pour toi, et le fait efficacement même
-avec des millions de vecteurs (grâce à des index spécialisés). Elle stocke :
+Une **base de données vectorielle** effectue ce travail à ta place, et le fait efficacement
+même avec des millions de vecteurs, grâce à des index spécialisés. Elle stocke :
 
 - le vecteur de chaque document ;
 - le texte d'origine ;
 - des métadonnées (ici : thèmes, ton, longueur).
 
-Le projet utilise **Chroma**, qui tourne en local et enregistre tout dans
-`data/chroma/`.
+Le projet utilise **Chroma**, qui s'exécute en local et enregistre l'ensemble de ses données
+dans `data/chroma/`.
 
 Extrait de `src/jcvd_bot/index.py` :
 
@@ -255,35 +270,38 @@ collection = client.create_collection(
 collection.add(ids=[...], documents=[...], metadatas=[...])
 ```
 
-Deux détails importants :
+Deux points méritent attention :
 
-- `embedding_function` : on donne le modèle à Chroma, qui calcule lui-même les vecteurs à
-  l'ajout des documents **et** à chaque recherche. Ça garantit que documents et questions
-  passent par le même modèle, ce qui est indispensable : deux modèles différents placent les
-  textes sur deux « cartes » différentes, et comparer leurs vecteurs n'aurait aucun sens.
-- `"space": "cosine"` : par défaut, Chroma mesure une distance euclidienne, et renvoie
-  même son **carré** (pour la meilleure citation de « Comment devenir meilleur ? » : 14,67,
-  soit 3,83²). On lui demande la distance cosinus (voir section 4) : elle convient mieux au
-  texte, et `similarité = 1 − distance` devient juste. Avec la distance euclidienne, ce calcul
-  donnerait des valeurs négatives sans signification, et le seuil de 0,2 éliminerait tout.
+- `embedding_function` : le modèle est confié à Chroma, qui calcule lui-même les vecteurs
+  lors de l'ajout des documents **et** à chaque recherche. On garantit ainsi que documents
+  et questions passent par le même modèle, condition indispensable : deux modèles différents
+  placent les textes sur deux « cartes » distinctes, et la comparaison de leurs vecteurs
+  n'aurait aucun sens.
+- `"space": "cosine"` : par défaut, Chroma mesure une distance euclidienne, et en renvoie
+  même le **carré** (pour la meilleure citation associée à « Comment devenir meilleur ? » :
+  14,67, soit 3,83²). On lui demande ici la distance cosinus (voir la section 4), mieux
+  adaptée au texte, ce qui rend exacte la formule `similarité = 1 − distance`. Avec la
+  distance euclidienne, ce calcul produirait des valeurs négatives dépourvues de
+  signification, et le seuil de 0,2 éliminerait tous les résultats.
 
 ---
 
 ## 6. Deux moments distincts : indexation et interrogation
 
-Un RAG se découpe en deux phases qu'il ne faut pas confondre.
+Un RAG se décompose en deux phases qu'il convient de ne pas confondre.
 
-**Indexation (hors ligne, une fois)** : on prépare la base.
+**Indexation (hors ligne, une seule fois)** : on prépare la base.
 
 ```
 citations_jcvd.md ──► jcvd ingest ──► citations.json ──► jcvd index ──► data/chroma/
    (89 blocs)          (nettoyage)      (72 citations)   (vectorisation)     (index)
 ```
 
-On ne la relance que si les citations changent. Vectoriser des millions de documents peut
-prendre des heures : on ne veut pas le faire à chaque question.
+Cette phase n'est relancée que si les citations changent. La vectorisation de millions de
+documents peut prendre plusieurs heures : il n'est pas envisageable de la répéter à chaque
+question.
 
-**Interrogation (en ligne, à chaque message)** : on utilise la base.
+**Interrogation (en ligne, à chaque message)** : on exploite la base.
 
 ```
 message ──► vectoriser ──► 3 plus proches voisins ──► prompt augmenté ──► LLM ──► réponse
@@ -301,14 +319,14 @@ Suivons le message « J'ai peur d'échouer » à travers `src/jcvd_bot/bot.py`.
 results = self.collection.query(query_texts=[query], n_results=k, ...)
 ```
 
-Chroma vectorise la question, trouve les 3 citations les plus proches, et renvoie leurs
-distances. On les convertit en similarités et on écarte celles sous le seuil
-(`SIMILARITY_THRESHOLD = 0.2`).
+Chroma vectorise la question, identifie les 3 citations les plus proches et renvoie leurs
+distances. Celles-ci sont converties en similarités, puis les citations dont la similarité
+est inférieure au seuil (`SIMILARITY_THRESHOLD = 0.2`) sont écartées.
 
 ### 7.2 Augmentation — `JCVDBot.respond()` (`bot.py`)
 
-Les citations trouvées sont insérées dans le message envoyé à Claude. Voici ce que Claude
-reçoit réellement comme message utilisateur :
+Les citations retenues sont insérées dans le message envoyé à Claude. Voici le message
+utilisateur que Claude reçoit effectivement :
 
 ```
 <citations>
@@ -320,34 +338,38 @@ reçoit réellement comme message utilisateur :
 Message de l'utilisateur : J'ai peur d'échouer
 ```
 
-Regarde la deuxième citation : elle n'a pas grand rapport avec l'échec. Le retrieval n'est pas
-parfait (voir section 8). C'est acceptable ici, car Claude choisit lui-même ce qu'il utilise.
+La deuxième citation n'a guère de rapport avec l'échec : le retrieval n'est pas parfait
+(voir la section 8). Cette imperfection est acceptable ici, car Claude choisit lui-même les
+éléments qu'il exploite.
 
-En plus de ce message, Claude reçoit :
+En complément de ce message, Claude reçoit :
 
-- **Le prompt système** (`SYSTEM_PROMPT`), qui décrit la persona : ses thèmes, sa façon de
-  parler, et la consigne de ne pas inventer de fausses citations. Il est identique à chaque
-  appel ; c'est pour ça que les citations, qui changent, n'y sont pas.
+- **Le prompt système** (`SYSTEM_PROMPT`), qui décrit la persona : ses thèmes, sa manière
+  de s'exprimer, et la consigne de ne pas inventer de fausses citations. Il est identique à
+  chaque appel ; c'est la raison pour laquelle les citations, qui varient, n'y figurent pas.
 
-  Un exemple de réglage : une première version disait seulement que JCVD pose des
-  « questions à l'interlocuteur ("Tu comprends ?") ». Le modèle en déduisait qu'il fallait
-  finir chaque réponse par une question, un tic fréquent des LLM. Le prompt précise
-  maintenant que JCVD n'interroge pas son interlocuteur : sa seule question est une
-  vérification rhétorique (« Tu comprends ? »), facultative, et beaucoup de réponses se
-  terminent sur une affirmation. Il explique aussi **pourquoi** (JCVD partage sa vision, il
-  ne mène pas d'interview) : un modèle suit mieux une consigne dont il comprend la raison.
+  Un exemple d'ajustement : une première version indiquait seulement que JCVD pose des
+  « questions à l'interlocuteur ("Tu comprends ?") ». Le modèle en concluait qu'il devait
+  terminer chaque réponse par une question, un travers fréquent chez les LLM. Le prompt
+  précise désormais que JCVD n'interroge pas son interlocuteur : sa seule question est une
+  vérification rhétorique (« Tu comprends ? »), facultative, et de nombreuses réponses se
+  concluent par une affirmation. Il en explique également la **raison** (JCVD partage sa
+  vision, il ne conduit pas un entretien) : un modèle suit mieux une consigne dont il
+  comprend la justification.
 
-  Autre piège : les consignes contradictoires. Pour que JCVD parle en longues phrases
-  sinueuses, il a fallu aussi retirer la fin du prompt, qui demandait « quelques paragraphes
-  courts ». Le modèle aurait dû arbitrer entre les deux. Mais « des phrases plus longues »
-  risquait aussi d'allonger les réponses, ce qu'on ne voulait pas. La version actuelle fixe
-  donc un **budget** explicite (environ 60 à 120 mots, un paragraphe) et dit comment le
-  répartir : deux ou trois longues phrases plutôt que beaucoup de courtes. Une fourchette
-  chiffrée est une consigne qu'un modèle suit bien, alors que « court » ou « long » est
-  interprété librement.
-- **L'historique** de la conversation. L'API de Claude n'a aucune mémoire entre deux appels :
-  pour avoir une vraie conversation, on renvoie tous les échanges précédents à chaque fois.
-  On y stocke les messages *sans* les citations, pour ne pas gonfler le contexte.
+  Autre écueil : les consignes contradictoires. Pour que JCVD s'exprime en longues phrases
+  sinueuses, il a également fallu supprimer la fin du prompt, qui demandait « quelques
+  paragraphes courts » ; le modèle aurait sinon dû arbitrer entre les deux. Cependant,
+  demander « des phrases plus longues » risquait aussi d'allonger les réponses, ce qui
+  n'était pas souhaité. La version actuelle fixe donc un **budget** explicite (environ 60 à
+  120 mots, en un paragraphe) et précise comment le répartir : deux ou trois longues
+  phrases plutôt qu'une succession de phrases courtes. Un modèle respecte bien une
+  fourchette chiffrée, alors qu'il interprète librement des termes comme « court » ou
+  « long ».
+- **L'historique** de la conversation. L'API de Claude ne conserve aucune mémoire entre deux
+  appels : pour mener une véritable conversation, il faut renvoyer l'ensemble des échanges
+  précédents à chaque appel. Les messages y sont stockés *sans* les citations, afin de ne
+  pas alourdir le contexte.
 
 ### 7.3 Generation — l'appel au modèle de langage
 
@@ -365,87 +387,95 @@ client.beta.messages.create(
 
 Deux paramètres sont propres à Claude :
 
-- `effort: "low"` limite la réflexion du modèle avant de répondre : pour une conversation,
-  c'est plus rapide et moins cher sans perte notable ;
-- `fallbacks="default"` (dans le code complet) fait basculer l'API sur un autre modèle si
-  Claude refuse une requête pour raison de sécurité.
+- `effort: "low"` limite la réflexion du modèle avant sa réponse : pour une conversation,
+  l'appel est ainsi plus rapide et moins coûteux, sans perte de qualité notable ;
+- `fallbacks="default"` (dans le code complet) permet à l'API de basculer sur un autre
+  modèle si Claude refuse une requête pour des raisons de sécurité.
 
-**Le modèle de langage est interchangeable.** Rien dans les étapes précédentes (ingestion,
-embeddings, recherche) ne dépend de lui : les citations sont trouvées de la même façon, puis
-données à n'importe quel modèle capable de suivre un prompt. Avec `LLM_BACKEND=ollama`, le
-même code appelle un modèle open source qui tourne sur ta machine. Il est gratuit et les
-messages ne quittent pas ta machine, mais un petit modèle suit bien moins fidèlement le prompt
-(voir les [mesures dans le README](../README.md#choisir-le-modèle-de-langage--claude-ou-ollama)). Autrement dit, le RAG apporte les **connaissances**
-(les citations), et le modèle de langage la **qualité d'écriture**.
+**Le modèle de langage est interchangeable.** Aucune des étapes précédentes (ingestion,
+embeddings, recherche) n'en dépend : les citations sont trouvées de la même manière, puis
+transmises à tout modèle capable de suivre un prompt. Avec `LLM_BACKEND=ollama`, le même
+code appelle un modèle open source exécuté sur ta machine. Cette solution est gratuite et
+les messages ne quittent pas ta machine, mais un petit modèle suit nettement moins
+fidèlement le prompt (voir les [mesures dans le README](../README.md#choisir-le-modèle-de-langage--claude-ou-ollama)).
+En d'autres termes, le RAG apporte les **connaissances** (les citations), et le modèle de
+langage la **qualité rédactionnelle**.
 
 ---
 
 ## 8. Limites et pièges
 
-Ces points ne sont pas théoriques : chacun s'est présenté pendant la construction du projet.
+Ces points ne relèvent pas de la théorie : chacun d'eux s'est présenté lors de la
+construction du projet.
 
-**Le retrieval ramène parfois des textes hors sujet**, comme la citation sur la nudité vue
-en 7.2. Causes : un petit modèle d'embeddings, un
-corpus de 72 textes très courts, et une question qui ne ressemble à aucune citation. Pistes
-d'amélioration : un meilleur modèle, un seuil plus strict, ou combiner avec une recherche
-par mots-clés (« recherche hybride »).
+**Le retrieval ramène parfois des textes hors sujet**, comme la citation sur la nudité
+observée en 7.2. Plusieurs causes y contribuent : un modèle d'embeddings de petite taille,
+un corpus de 72 textes très courts, et une question qui ne ressemble à aucune citation.
+Pistes d'amélioration : un modèle plus performant, un seuil plus strict, ou une combinaison
+avec une recherche par mots-clés (« recherche hybride »).
 
 **Un seuil de similarité dépend du modèle.** Une première version du projet utilisait un
 seuil de 0,65 : avec ce modèle, il aurait éliminé toutes les citations.
 
-**Vérifie que tes embeddings sont de vrais embeddings.** Une première version « simulait »
-les embeddings avec un hachage du texte (SHA-256). Le code tournait sans erreur, mais la
-recherche renvoyait des citations au hasard : un hachage ne contient aucun sens. Leçon :
-teste toujours ton retrieval seul (`uv run jcvd search "..."`) avant de brancher le LLM.
-Si les résultats ne sont pas sensés, le LLM ne pourra pas rattraper le coup.
+**Vérifie que tes embeddings sont de véritables embeddings.** Une première version
+« simulait » les embeddings au moyen d'un hachage du texte (SHA-256). Le code s'exécutait
+sans erreur, mais la recherche renvoyait des citations aléatoires : un hachage ne porte
+aucune information de sens. Enseignement : teste toujours le retrieval isolément
+(`uv run jcvd search "..."`) avant de le relier au LLM. Si les résultats ne sont pas
+cohérents, le LLM ne pourra pas compenser ce défaut.
 
 **La qualité des données compte autant que le modèle.** Le fichier source contenait 17
-doublons ou quasi-doublons. Sans nettoyage, la même citation aurait pu remonter deux fois et
-occuper deux des trois places. Le parser les élimine en comparant des textes normalisés
-(sans accents ni ponctuation) et en fusionnant les versions similaires à plus de 90 %.
+doublons ou quasi-doublons. Sans nettoyage, une même citation aurait pu apparaître deux fois
+et occuper deux des trois places disponibles. Le parser les élimine en comparant des textes
+normalisés (sans accents ni ponctuation) et en fusionnant les versions similaires à plus de
+90 %.
 
-**Les métadonnées par mots-clés sont grossières.** Les champs `themes` et `tone` sont calculés
-avec des règles simples. Ils ne servent pas à la recherche ; ils seraient utiles pour filtrer
-(voir exercice 4).
+**Les métadonnées par mots-clés restent approximatives.** Les champs `themes` et `tone`
+sont calculés à l'aide de règles simples. Ils ne servent pas à la recherche, mais
+pourraient servir au filtrage (voir l'exercice 4).
 
 ---
 
 ## 9. Mesurer avant d'améliorer
 
-Comment savoir si une modification améliore la recherche ? Essayer trois questions « à l'œil »
-ne suffit pas : on retient les exemples qui arrangent. Il faut une **évaluation** : des
-questions fixées à l'avance, la réponse attendue pour chacune, et un score.
+Comment savoir si une modification améliore la recherche ? Tester trois questions « à
+l'œil » ne suffit pas : on a tendance à retenir les exemples favorables. Il faut une
+**évaluation** : des questions fixées à l'avance, la réponse attendue pour chacune, et un
+score.
 
 ### Le jeu d'évaluation
 
-`data/eval_search.json` contient 30 questions. Pour chacune, on liste les citations qui y
-répondent, repérées par un fragment de leur texte (un identifiant comme `quote_035` change
-dès qu'on modifie le fichier source). `uv run jcvd eval` calcule deux indicateurs :
+`data/eval_search.json` contient 30 questions. Pour chacune d'elles sont listées les
+citations qui y répondent, identifiées par un fragment de leur texte (un identifiant tel que
+`quote_035` change dès que le fichier source est modifié). `uv run jcvd eval` calcule deux
+indicateurs :
 
-- **hit@3** : la bonne citation est-elle parmi les 3 que le bot reçoit réellement ?
-- **MRR** (*Mean Reciprocal Rank*, rang réciproque moyen) : 1 si la bonne citation est 1re,
-  0,5 si 2e, 0,33 si 3e… 0 si elle n'est pas dans le top 10. Il récompense une citation bien placée.
+- **hit@3** : la bonne citation figure-t-elle parmi les 3 que le bot reçoit effectivement ?
+- **MRR** (*Mean Reciprocal Rank*, rang réciproque moyen) : 1 si la bonne citation est
+  classée 1re, 0,5 si elle est 2e, 0,33 si elle est 3e, etc., et 0 si elle ne figure pas
+  dans les 10 premiers résultats. Cet indicateur récompense une citation bien classée.
 
 ### Premier piège : une évaluation trop facile
 
-La première version du jeu ne contenait que des questions qui reprenaient des mots des
-citations (« Est-ce que tu as déjà pris de la drogue ? » pour « La drogue, faut pas
-toucher… »). Résultat : 16/16, toujours au rang 1. Ce score parfait ne prouvait rien :
-écrites par quelqu'un qui connaît les citations, ces questions étaient trop faciles.
+La première version du jeu ne comportait que des questions reprenant des mots des citations
+(« Est-ce que tu as déjà pris de la drogue ? » pour « La drogue, faut pas toucher… »).
+Résultat : 16/16, toujours au rang 1. Ce score parfait ne démontrait rien : rédigées par
+une personne qui connaissait les citations, ces questions étaient trop faciles.
 
-On a donc ajouté 14 questions **indirectes**, comme les poserait un vrai utilisateur
-(« Tu crois aux horoscopes ? » pour la citation sur la voyante). Les questions sont
-étiquetées `facile` ou `difficile`. Les scores de la recherche actuelle sont dans la ligne
-« Référence » du tableau ci-dessous.
+Le jeu a donc été complété par 14 questions **indirectes**, formulées comme le ferait un
+véritable utilisateur (« Tu crois aux horoscopes ? » pour la citation sur la voyante). Les
+questions sont étiquetées `facile` ou `difficile`. Les scores de la recherche actuelle
+figurent dans la ligne « Référence » du tableau ci-dessous.
 
 ### Une expérience : enrichir les citations
 
-Idée testée : une question et une citation ne se ressemblent pas, même quand l'une répond à
-l'autre. On a donc demandé à un LLM (`ministral-3:3b`, via Ollama) d'inventer, pour chaque
-citation, 3 questions auxquelles elle répondrait, pour les indexer avec elle. Deux variantes :
+Hypothèse testée : une question et une citation ne se ressemblent pas, même lorsque l'une
+répond à l'autre. On a donc demandé à un LLM (`ministral-3:3b`, via Ollama) de générer, pour
+chaque citation, 3 questions auxquelles elle répondrait, afin de les indexer avec elle. Deux
+variantes ont été évaluées :
 
 - **A** : un vecteur par citation, calculé sur « citation + ses questions » ;
-- **B** : un vecteur pour la citation et un par question, tous reliés à la citation.
+- **B** : un vecteur pour la citation et un par question, tous rattachés à la citation.
 
 | Variante | facile hit@3 (MRR) | difficile hit@3 (MRR) |
 |---|---|---|
@@ -453,56 +483,61 @@ citation, 3 questions auxquelles elle répondrait, pour les indexer avec elle. D
 | A | 15/16 (0,91) | 11/14 (0,77) |
 | B | 16/16 (0,97) | 10/14 (0,54) |
 
-Aucune variante n'est nettement meilleure, et **l'enrichissement n'a pas été intégré**. La
-variante A place mieux les bonnes citations sur les questions difficiles, mais n'en trouve
-pas une de plus, et elle fait échouer « Quel est ton film préféré ? » (rang 1 → hors du top
-10). Les questions générées pour d'autres citations parlent de « films » et attirent cette
-requête, tandis que « Forrest Gump » est dilué dans un texte plus long : le texte ajouté
-apporte du signal, mais aussi du bruit.
+Aucune variante ne se révèle nettement supérieure, et **l'enrichissement n'a pas été
+intégré**. La variante A classe mieux les bonnes citations sur les questions difficiles,
+mais n'en retrouve aucune supplémentaire, et elle fait échouer « Quel est ton film
+préféré ? » (rang 1 → hors des 10 premiers). Les questions générées pour d'autres citations
+évoquent des « films » et attirent cette requête, tandis que « Forrest Gump » se trouve
+dilué dans un texte plus long : le texte ajouté apporte du signal, mais également du bruit.
 
-Leçons à retenir :
+Enseignements à retenir :
 
 - **Mesure avant et après.** Sans évaluation, cette idée séduisante aurait été intégrée et
-  aurait dégradé certaines réponses sans que personne ne le voie.
-- **Un petit jeu d'évaluation est bruité** : avec 14 questions difficiles, une question vaut
-  7 points. Ne conclus pas sur un écart d'une ou deux questions.
-- **N'ajuste pas ta méthode en regardant le jeu d'évaluation** (par exemple en réécrivant la
-  consigne de génération jusqu'à faire passer « horoscopes ») : le score augmenterait sans que
-  la recherche soit meilleure pour de vraies questions.
-- **Un petit LLM suit mal les consignes de format** : ici, il numérotait et mettait en
-  italique ses questions malgré la consigne, et il a fallu un découpage tolérant.
+  aurait dégradé certaines réponses sans que personne ne s'en aperçoive.
+- **Un petit jeu d'évaluation est bruité** : avec 14 questions difficiles, chaque question
+  représente 7 points. Ne tire pas de conclusion d'un écart d'une ou deux questions.
+- **N'ajuste pas ta méthode en observant le jeu d'évaluation** (par exemple en réécrivant
+  la consigne de génération jusqu'à faire réussir « horoscopes ») : le score augmenterait
+  sans que la recherche soit meilleure pour de véritables questions.
+- **Un petit LLM respecte mal les consignes de format** : ici, il numérotait ses questions
+  et les mettait en italique malgré la consigne, ce qui a imposé un découpage tolérant.
 
 ## 10. Exercices
 
-Chaque exercice se fait en quelques minutes et fait comprendre un point précis.
+Chaque exercice se réalise en quelques minutes et illustre un point précis.
 
 1. **Explorer le retrieval.** Pose tes propres questions avec
-   `uv run jcvd search "ta question"` (ajoute `-k 10` pour voir plus de résultats). Trouve une
-   question pour laquelle les résultats sont mauvais, et essaie d'expliquer pourquoi.
+   `uv run jcvd search "ta question"` (ajoute `-k 10` pour afficher davantage de résultats).
+   Trouve une question pour laquelle les résultats sont mauvais, et tente d'en expliquer la
+   raison.
 
-2. **Jouer avec `k`.** Dans `src/jcvd_bot/config.py`, passe `RETRIEVE_K` à 1, puis à 10, et discute avec
-   le bot. Avec 1, les réponses collent-elles plus à une citation ? Avec 10, sont-elles plus
-   variées ou plus floues ?
+2. **Faire varier `k`.** Dans `src/jcvd_bot/config.py`, fixe `RETRIEVE_K` à 1, puis à 10,
+   et converse avec le bot. Avec 1, les réponses s'appuient-elles davantage sur une
+   citation ? Avec 10, sont-elles plus variées ou plus floues ?
 
-3. **Désactiver le retrieval.** Dans `src/jcvd_bot/bot.py`, remplace `citations = self.retriever.search(user_message)`
-   par `citations = []`. Compare les réponses : c'est l'apport concret du RAG.
+3. **Désactiver le retrieval.** Dans `src/jcvd_bot/bot.py`, remplace
+   `citations = self.retriever.search(user_message)` par `citations = []`. Compare les
+   réponses : la différence constitue l'apport concret du RAG.
 
-4. **Filtrer par métadonnées.** Dans `src/jcvd_bot/retriever.py`, ajoute `where={"tone": "questionnant"}`
-   à l'appel `collection.query(...)`. Seules les citations de ce ton seront candidates.
+4. **Filtrer par métadonnées.** Dans `src/jcvd_bot/retriever.py`, ajoute
+   `where={"tone": "questionnant"}` à l'appel `collection.query(...)`. Seules les citations
+   de ce ton seront alors candidates.
 
 5. **Changer de modèle d'embeddings.** Note le score de `uv run jcvd eval`, remplace
-   `EMBEDDING_MODEL` par `all-MiniLM-L6-v2` (un modèle entraîné surtout en anglais), relance
-   `jcvd index` puis `jcvd eval`. De combien le score baisse-t-il sur les questions en français ?
-   Remets ensuite le modèle d'origine et relance `jcvd index`. Pour aller plus loin, essaie un
-   modèle plus puissant (par exemple via l'API Voyage AI) : le score monte-t-il ?
+   `EMBEDDING_MODEL` par `all-MiniLM-L6-v2` (un modèle entraîné principalement sur de
+   l'anglais), relance `jcvd index` puis `jcvd eval`. Dans quelle mesure le score
+   baisse-t-il sur les questions en français ? Rétablis ensuite le modèle d'origine et
+   relance `jcvd index`. Pour aller plus loin, essaie un modèle plus performant (par exemple
+   via l'API Voyage AI) : le score progresse-t-il ?
 
 6. **Comparer deux modèles de langage.** Pose les mêmes questions avec
-   `uv run jcvd ask "..."`, une fois avec Claude, une fois avec `LLM_BACKEND=ollama`. Compare
-   les mesures affichées (mots, phrases, question finale) et le style. Quelles consignes du
-   prompt le petit modèle respecte-t-il, lesquelles ignore-t-il ?
+   `uv run jcvd ask "..."`, une fois avec Claude, une fois avec `LLM_BACKEND=ollama`.
+   Compare les mesures affichées (mots, phrases, question finale) ainsi que le style.
+   Quelles consignes du prompt le petit modèle respecte-t-il, et lesquelles ignore-t-il ?
 
 7. **Changer de persona.** Remplace `data/citations_jcvd.md` par les citations d'une autre
-   personne, adapte `SYSTEM_PROMPT`, et relance les étapes 1 et 2. Le reste du code ne change pas.
+   personne, adapte `SYSTEM_PROMPT`, puis relance les étapes 1 et 2. Le reste du code
+   demeure inchangé.
 
 ---
 
@@ -510,24 +545,28 @@ Chaque exercice se fait en quelques minutes et fait comprendre un point précis.
 
 - **LLM** (*Large Language Model*) : modèle qui génère du texte, ici Claude ou un modèle
   open source exécuté par Ollama.
-- **RAG** (*Retrieval-Augmented Generation*) : chercher des documents pertinents puis les
-  fournir au LLM avant qu'il réponde.
+- **RAG** (*Retrieval-Augmented Generation*) : technique consistant à rechercher des
+  documents pertinents, puis à les fournir au LLM avant qu'il ne réponde.
 - **Embedding** : liste de nombres qui représente le sens d'un texte.
-- **Dimension** : nombre de valeurs dans un embedding (384 ici), fixé par le modèle.
-- **Similarité cosinus** : cosinus de l'angle entre deux vecteurs ; 1 pour la même direction
-  (même sens), 0 pour des directions sans rapport. Ne dépend pas de la longueur des vecteurs.
-- **Distance cosinus** : `1 − similarité cosinus` ; 0 pour des vecteurs de même direction.
-- **Distance euclidienne (L2)** : distance « à vol d'oiseau » entre les pointes de deux
-  vecteurs ; tient compte à la fois de leur direction et de leur longueur.
+- **Dimension** : nombre de valeurs d'un embedding (384 ici), fixé par le modèle.
+- **Similarité cosinus** : cosinus de l'angle entre deux vecteurs ; vaut 1 pour une même
+  direction (même sens) et 0 pour des directions sans rapport. Elle ne dépend pas de la
+  longueur des vecteurs.
+- **Distance cosinus** : `1 − similarité cosinus` ; vaut 0 pour des vecteurs de même
+  direction.
+- **Distance euclidienne (L2)** : distance en ligne droite entre les extrémités de deux
+  vecteurs ; elle tient compte à la fois de leur direction et de leur longueur.
 - **Vecteur normalisé** : vecteur ramené à une longueur de 1. Entre vecteurs normalisés,
-  distance euclidienne et cosinus donnent le même classement.
-- **Base vectorielle** : base de données qui stocke des embeddings et retrouve les plus
-  proches d'un vecteur donné (ici Chroma).
-- **Indexation** : phase préalable où l'on vectorise et stocke les documents.
-- **Jeu d'évaluation** : questions fixées à l'avance avec leur réponse attendue, pour mesurer
-  la qualité de la recherche (`jcvd eval`).
-- **hit@3, MRR** : indicateurs de la recherche (bonne citation dans le top 3 ; rang
-  réciproque moyen de la bonne citation).
-- **Retrieval** : phase où l'on cherche les documents proches d'une question.
-- **Prompt système** : instructions permanentes données au LLM (ici, la persona JCVD).
-- **Contexte** : tout ce que le LLM reçoit à un appel (prompt système, historique, citations).
+  distance euclidienne et similarité cosinus produisent le même classement.
+- **Base vectorielle** : base de données qui stocke des embeddings et retrouve ceux qui
+  sont les plus proches d'un vecteur donné (ici Chroma).
+- **Indexation** : phase préalable au cours de laquelle les documents sont vectorisés et
+  stockés.
+- **Jeu d'évaluation** : ensemble de questions fixées à l'avance, accompagnées de leur
+  réponse attendue, qui permet de mesurer la qualité de la recherche (`jcvd eval`).
+- **hit@3, MRR** : indicateurs de qualité de la recherche (présence de la bonne citation
+  parmi les 3 premières ; rang réciproque moyen de la bonne citation).
+- **Retrieval** : phase de recherche des documents proches d'une question.
+- **Prompt système** : instructions permanentes fournies au LLM (ici, la persona JCVD).
+- **Contexte** : ensemble des éléments que le LLM reçoit lors d'un appel (prompt système,
+  historique, citations).
