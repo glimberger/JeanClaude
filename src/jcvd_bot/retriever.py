@@ -1,0 +1,55 @@
+"""
+Étape 3a : retrouver les citations les plus proches d'une question.
+
+La question est vectorisée avec LE MÊME modèle que les citations (sinon les
+vecteurs ne sont pas comparables), puis Chroma renvoie les plus proches.
+"""
+
+import logging
+
+from jcvd_bot.config import COLLECTION_NAME, RETRIEVE_K, SIMILARITY_THRESHOLD
+from jcvd_bot.index import embedding_function, get_client
+from jcvd_bot.logs import short_repr, traced
+
+log = logging.getLogger(__name__)
+
+
+class Retriever:
+    @traced
+    def __init__(self):
+        self.collection = get_client().get_collection(
+            name=COLLECTION_NAME, embedding_function=embedding_function()
+        )
+
+        log.debug("Collection %r ouverte : %d citations", COLLECTION_NAME, self.collection.count())
+
+    @traced
+    def search(self, query, k=RETRIEVE_K, threshold=SIMILARITY_THRESHOLD):
+        results = self.collection.query(
+            query_texts=[query],
+            n_results=k,
+            include=["documents", "metadatas", "distances"],
+        )
+        citations = []
+        for id_, text, meta, distance in zip(
+            results["ids"][0],
+            results["documents"][0],
+            results["metadatas"][0],
+            results["distances"][0],
+            strict=True,
+        ):
+            similarity = 1 - distance  # valable car la collection utilise la distance cosinus
+            if similarity < threshold:
+                log.debug("  écartée  %.3f < seuil %.2f  %s %s", similarity, threshold, id_, short_repr(text))
+                continue
+            log.debug("  retenue  %.3f              %s %s", similarity, id_, short_repr(text))
+            citations.append(
+                {
+                    "id": id_,
+                    "text": text,
+                    "similarity": round(similarity, 3),
+                    "themes": meta["themes"].split("|"),
+                    "tone": meta["tone"],
+                }
+            )
+        return citations

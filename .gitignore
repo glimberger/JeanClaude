@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.env
+# index vectoriel, régénéré par `jcvd index`
+data/chroma/
