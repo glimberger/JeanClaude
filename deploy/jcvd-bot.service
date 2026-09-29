@@ -1,0 +1,32 @@
+# Service systemd "utilisateur" qui fait tourner le bot Telegram en permanence.
+#
+# systemd est le gestionnaire de services de Linux : il démarre les programmes au boot,
+# les relance s'ils plantent et collecte leurs logs. Un service "utilisateur" tourne sous
+# ton compte, sans droits administrateur : pas besoin de sudo pour le gérer.
+# Pour qu'il démarre au boot sans que tu sois connecté, il faut une seule fois :
+#   sudo loginctl enable-linger $USER
+#
+# %h est remplacé par ton dossier personnel (/home/<utilisateur>).
+# Installation et commandes utiles : voir docs/DEPLOIEMENT_PI.md.
+
+[Unit]
+Description=Bot Telegram JCVD (RAG)
+
+[Service]
+WorkingDirectory=%h/projects/JeanClaude
+# --env-file : les secrets sont lus dans .env, exactement comme en lançant le bot à la main.
+# --frozen : utilise les versions de uv.lock telles quelles, sans jamais les modifier.
+ExecStart=%h/.local/bin/uv run --frozen --env-file .env jcvd telegram
+# Relance le bot 10 s après un plantage. Au démarrage du Pi, si le réseau n'est pas encore
+# prêt, le bot échoue à joindre Telegram, s'arrête, et cette relance fait la suite.
+Restart=on-failure
+RestartSec=10
+# Sans ça, Python garde ses logs en mémoire tampon et ils arrivent en retard dans le journal.
+Environment=PYTHONUNBUFFERED=1
+# Pas de barres de progression (chargement du modèle) : dans le journal, elles deviennent
+# des lignes illisibles ("[146B blob data]").
+Environment=TQDM_DISABLE=1
+
+[Install]
+# Démarre avec la session de l'utilisateur, ouverte dès le boot grâce à "linger".
+WantedBy=default.target

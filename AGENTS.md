@@ -60,6 +60,8 @@ dans :
 
 - `README.md` : référence (installation, commandes, étapes, structure) ;
 - `docs/GUIDE_RAG.md` : le guide qui explique le RAG depuis zéro, avec des exemples réels ;
+- `docs/DEPLOIEMENT_PI.md` : l'installation sur un Raspberry Pi (tout ce qui touche au
+  déploiement, au service `deploy/jcvd-bot.service` ou aux dépendances sous Linux) ;
 - `.env.example` : toute nouvelle variable d'environnement, avec un commentaire.
 
 Une information n'est écrite qu'à **un seul endroit** : le README donne le pratique

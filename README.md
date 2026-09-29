@@ -242,6 +242,15 @@ ligne, la librairie réessayant d'elle-même.
   bout ; Telegram voit les messages. Où part ensuite le texte : ligne « Confidentialité » du
   tableau « Choisir le modèle de langage » ci-dessus.
 
+## Déployer sur un Raspberry Pi
+
+Pour que le bot Telegram tourne en permanence, installe-le sur un Raspberry Pi et confie-le à
+**systemd**, le gestionnaire de services de Linux : il le démarre avec le Pi et le relance
+s'il plante. La procédure complète (carte SD, clé SSH, installation, secrets, service, mise à
+jour) et les mesures relevées sur un Pi 5 sont dans
+[docs/DEPLOIEMENT_PI.md](docs/DEPLOIEMENT_PI.md) ; les commandes pour gérer le service et lire
+ses logs, dans sa [section 9](docs/DEPLOIEMENT_PI.md#9-installer-et-gérer-le-service).
+
 ## Mode debug
 
 Pour voir tout ce que fait le bot, ajoute `--debug` **avant** la commande :
@@ -302,8 +311,11 @@ JeanClaude/
 │   ├── citations.json           généré par `jcvd ingest`
 │   ├── eval_search.json         jeu d'évaluation de la recherche (`jcvd eval`)
 │   └── chroma/                  index vectoriel, généré par `jcvd index` (non versionné)
+├── deploy/
+│   └── jcvd-bot.service         service systemd pour faire tourner le bot sur un Pi
 ├── docs/
-│   └── GUIDE_RAG.md             comprendre le RAG depuis zéro
+│   ├── GUIDE_RAG.md             comprendre le RAG depuis zéro
+│   └── DEPLOIEMENT_PI.md        installer le bot sur un Raspberry Pi
 ├── src/jcvd_bot/                le code (un package Python)
 │   ├── config.py                réglages : modèles, chemins, k, seuil
 │   ├── ingest.py                étape 1
