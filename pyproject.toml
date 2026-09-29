@@ -11,6 +11,9 @@ dependencies = [
     "chromadb>=1.0",
     "python-telegram-bot>=22.8",
     "sentence-transformers>=3.0",
+    # Dépendance indirecte (via sentence-transformers), déclarée ici uniquement pour pouvoir
+    # choisir sa source ci-dessous : uv ne le permet que pour une dépendance directe.
+    "torch>=2.0",
 ]
 
 [project.scripts]
@@ -21,6 +24,17 @@ dev = [
     "pytest>=8.0",
     "ruff>=0.6",
 ]
+
+# Sur Linux (le Raspberry Pi), le PyTorch du dépôt par défaut (PyPI) est compilé pour les
+# cartes graphiques NVIDIA (CUDA) et embarque plusieurs Go de bibliothèques inutiles sans GPU.
+# On prend donc la version "CPU uniquement" publiée par PyTorch. Sur Mac, rien ne change.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true  # ce dépôt ne sert qu'aux paquets qui le demandent (torch), pas aux autres
 
 [build-system]
 requires = ["uv_build>=0.12.19,<0.13.0"]
