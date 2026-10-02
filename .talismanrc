@@ -1,0 +1,10 @@
+# Talisman (pre-commit secret scanner) false positives. Each entry only silences one detector
+# for one file, without a checksum, so it keeps working when the file changes.
+fileignoreconfig:
+  # flake.lock pins Nix inputs with content hashes and git revisions, not secrets.
+  - filename: flake.lock
+    ignore_detectors: [filecontent]
+  # .envrc (direnv) matches the `.env` file name pattern; it only contains `use flake`.
+  - filename: .envrc
+    ignore_detectors: [filename]
+version: "1.0"
