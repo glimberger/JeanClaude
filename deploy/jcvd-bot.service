@@ -8,6 +8,8 @@
 #
 # %h est remplacé par ton dossier personnel (/home/<utilisateur>).
 # Installation et commandes utiles : voir docs/DEPLOIEMENT_PI.md.
+# Pi géré avec Nix : deploy/jcvd-bot.nix décrit le même service en module home-manager
+# (docs/DEPLOIEMENT_PI.md, section 12). Garde les deux fichiers synchronisés.
 
 [Unit]
 Description=Bot Telegram JCVD (RAG)

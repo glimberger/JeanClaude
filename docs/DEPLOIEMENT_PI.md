@@ -258,6 +258,10 @@ sans droits administrateur, et se gère sans `sudo`. Il :
 
 ## 9. Installer et gérer le service
 
+Si ton Pi est géré avec Nix et home-manager, installe plutôt le service avec le module de la
+[section 12](#12-variante-avec-nix-et-home-manager) ; les commandes utiles ci-dessous restent
+les mêmes.
+
 ```bash
 ssh agent-pi
 systemctl --user enable --now ~/projects/JeanClaude/deploy/jcvd-bot.service
@@ -319,3 +323,83 @@ Avec Ollama sur le Pi (`LLM_BACKEND=ollama`), la réponse serait générée par 
 ce cas n'a pas encore été mesuré. Les modèles testés sur Mac et leurs limites sont décrits
 dans le README, [Choisir le modèle de
 langage](../README.md#choisir-le-modèle-de-langage--claude-ou-ollama).
+
+---
+
+## 12. Variante avec Nix et home-manager
+
+Cette section ne te concerne que si tu gères déjà ton Pi avec **Nix** (un gestionnaire de
+paquets qui décrit un environnement dans des fichiers texte) et **home-manager** (l'outil Nix
+qui décrit l'environnement d'un utilisateur : programmes, fichiers de configuration,
+services). C'est le cas du Pi de ce projet.
+
+Au lieu d'activer `deploy/jcvd-bot.service` à la main (étape 9), tu déclares le service dans
+ta configuration home-manager. Le fichier [`deploy/jcvd-bot.nix`](../deploy/jcvd-bot.nix)
+est un **module** home-manager : il décrit le même service que `deploy/jcvd-bot.service`,
+et home-manager se charge de l'écrire, de l'activer au démarrage et de le relancer quand sa
+définition change.
+
+Le module ne remplace que la partie systemd. Le bot tourne toujours depuis le dépôt cloné,
+avec son `.venv` et son `.env` : les étapes 1 à 7 restent nécessaires, réglage « linger » de
+l'étape 5 compris.
+
+### Importer le module
+
+Dans le `flake.nix` de ta configuration, ajoute le dépôt en entrée. `flake = false` : on veut
+seulement ses fichiers, pas un flake.
+
+```nix
+inputs.jeanclaude = {
+  url = "github:glimberger/JeanClaude";
+  flake = false;
+};
+```
+
+Puis, dans les modules de la configuration home-manager du Pi :
+
+```nix
+modules = [
+  # … tes autres modules
+  "${jeanclaude}/deploy/jcvd-bot.nix"
+];
+```
+
+Et dans la configuration du Pi :
+
+```nix
+services.jcvd-bot.enable = true;
+```
+
+| Option | Par défaut | Rôle |
+|---|---|---|
+| `services.jcvd-bot.enable` | `false` | active le service |
+| `services.jcvd-bot.directory` | `%h/projects/JeanClaude` | dossier du dépôt cloné (`%h` : ton dossier personnel) |
+| `services.jcvd-bot.package` | `pkgs.uv` | le `uv` qui lance le bot |
+
+### Passer du service manuel au module
+
+Si tu as suivi l'étape 9, désactive d'abord l'ancien service : son lien dans
+`~/.config/systemd/user/` gênerait home-manager, qui veut y écrire son propre fichier.
+
+```bash
+systemctl --user disable --now jcvd-bot
+home-manager switch --flake <ta-configuration>
+```
+
+Le bot est arrêté entre ces deux commandes. Pour réduire cette coupure, construis d'abord la
+configuration (`home-manager build --flake <ta-configuration>`) : le `switch` n'a plus alors
+qu'à l'activer. Mesuré sur ce Pi : **5 s** de coupure.
+
+Les commandes de l'étape 9 (`status`, `restart`, logs) et la mise à jour du bot (étape 10)
+ne changent pas.
+
+### Mettre à jour le module
+
+Ta configuration fige la version du dépôt dans son `flake.lock`. Après une modification de
+`deploy/jcvd-bot.nix`, un `git pull` du projet ne suffit pas : mets à jour l'entrée dans ta
+configuration, puis applique-la.
+
+```bash
+nix flake update jeanclaude
+home-manager switch --flake <ta-configuration>
+```
