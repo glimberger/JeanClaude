@@ -174,8 +174,9 @@ réponse de Claude lit environ 1 400 à 2 000 tokens et en écrit environ 250, s
 million de tokens lus, 25 $ par million écrits). Les tokenizers diffèrent d'un modèle à
 l'autre : ne compare pas directement le nombre de tokens de Claude et d'Ollama.
 
-`ministral-3:3b` est le modèle Ollama par défaut. Les deux modèles Ollama ont la taille visée
-pour un Raspberry Pi 5 de 8 Go ; leur vitesse sur le Pi reste à mesurer.
+`ministral-3:3b` est le modèle Ollama par défaut. Les deux modèles Ollama tiennent dans un
+Raspberry Pi 5 de 8 Go, mais y sont lents : de 48 à 107 s par réponse, contre 4,8 à 8,1 s sur
+le Mac ([mesures sur le Pi](docs/DEPLOIEMENT_PI.md#13-ollama-sur-le-pi)).
 
 **Ollama sur une autre machine.** Le bot peut tourner sur le Pi et appeler un Ollama installé
 sur le Mac : `OLLAMA_BASE_URL=http://<adresse-du-mac>:11434`. Ollama n'écoute par défaut que
@@ -255,6 +256,9 @@ ligne, la librairie réessayant d'elle-même.
 - **Pas de blocage** : la librairie Telegram est asynchrone, mais la recherche et l'appel au
   modèle de langage sont bloquants (plusieurs secondes). On les lance dans un thread
   (`asyncio.to_thread`) pour ne pas figer le bot pendant ce temps.
+- **Indicateur « en train d'écrire… »** : Telegram l'efface au bout d'environ 5 s. Le bot le
+  renvoie donc toutes les 4 s tant que la réponse n'est pas prête (`keep_typing`), ce qui
+  compte avec Ollama sur le Pi, où une réponse prend environ une minute.
 - **Messages traités un par un** (réglage par défaut de la librairie) : deux messages
   envoyés coup sur coup ne peuvent pas se mélanger dans l'historique.
 - **Chiffrement** : les conversations avec un bot Telegram ne sont pas chiffrées de bout en

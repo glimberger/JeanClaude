@@ -326,10 +326,9 @@ systemctl --user restart jcvd-bot
 | Environnement Python (`.venv`) | 1,3 Go (+ 458 Mo pour le modèle d'embeddings) |
 | Température | 47 à 49 °C, aucun ralentissement (`vcgencmd get_throttled` = `0x0`) |
 
-Avec Ollama sur le Pi (`LLM_BACKEND=ollama`), la réponse serait générée par le Pi lui-même :
-ce cas n'a pas encore été mesuré. Les modèles testés sur Mac et leurs limites sont décrits
-dans le README, [Choisir le modèle de
-langage](../README.md#choisir-le-modèle-de-langage--claude-ou-ollama).
+Avec Ollama sur le Pi (`LLM_BACKEND=ollama`), c'est le Pi lui-même qui écrit la réponse : de
+48 à 89 s avec `ministral-3:3b`. Mesures complètes et explication dans la
+[section 13](#13-ollama-sur-le-pi).
 
 ---
 
@@ -410,3 +409,115 @@ configuration, puis applique-la.
 nix flake update jeanclaude
 home-manager switch --flake <ta-configuration>
 ```
+
+---
+
+## 13. Ollama sur le Pi
+
+Par défaut, le bot confie l'écriture des réponses à Claude, sur les serveurs d'Anthropic. Avec
+`LLM_BACKEND=ollama`, il peut aussi utiliser un modèle local, exécuté par Ollama sur le Pi
+lui-même : gratuit, et rien ne part chez Anthropic. Le README explique ce qui change dans le
+code et compare les modèles sur Mac ([Choisir le modèle de
+langage](../README.md#choisir-le-modèle-de-langage--claude-ou-ollama)). Cette section décrit
+l'installation sur le Pi et ce qu'on y a mesuré.
+
+**En bref** : ça fonctionne, mais une réponse prend environ une minute, contre 7 s avec
+Claude. Le bot de ce projet reste donc sur Claude ; Ollama est installé sur le Pi pour
+expérimenter, et passer de l'un à l'autre ne demande qu'une ligne dans `.env`.
+
+### Installer Ollama
+
+**Avec home-manager** (le cas de ce Pi), dans la configuration du Pi :
+
+```nix
+services.ollama = {
+  enable = true;
+  acceleration = false;               # le Pi 5 n'a pas de GPU utilisable par Ollama
+  environmentVariables = {
+    OLLAMA_CONTEXT_LENGTH = "4096";
+    OLLAMA_KEEP_ALIVE = "-1";
+  };
+};
+```
+
+Puis `home-manager switch --flake <ta-configuration>`. home-manager crée un service
+utilisateur `ollama.service`, comme celui du bot. Il n'écoute que sur le Pi
+(`127.0.0.1:11434`) : la valeur par défaut d'`OLLAMA_BASE_URL` (`http://localhost:11434`)
+convient donc, sans rien ouvrir sur le réseau. Le service du bot démarre après lui
+(`After=ollama.service` dans [`deploy/jcvd-bot.service`](../deploy/jcvd-bot.service) et
+`deploy/jcvd-bot.nix`). Ce n'est qu'un ordre de démarrage : sans Ollama, la ligne n'a aucun
+effet.
+
+**Sans Nix**, le script officiel installe Ollama comme service **système** (il demande
+`sudo`) : `curl -fsSL https://ollama.com/install.sh | sh`. Les deux réglages ci-dessus se
+mettent alors dans `sudo systemctl edit ollama`, sous `[Service]`
+(`Environment=OLLAMA_CONTEXT_LENGTH=4096`, etc.). Un service utilisateur ne peut pas se ranger
+après un service système : `After=ollama.service` reste alors sans effet, ce qui ne gêne pas
+(voir plus bas). Cette variante n'a pas été testée sur ce Pi.
+
+### Télécharger le modèle et brancher le bot
+
+```bash
+ollama pull ministral-3:3b             # 3,0 Go, 1 min 24 s sur ce Pi
+```
+
+Dans le `.env` du Pi, ajoute `LLM_BACKEND=ollama`, puis redémarre le bot
+(`systemctl --user restart jcvd-bot`). Pour revenir à Claude, retire la ligne (ou mets
+`LLM_BACKEND=claude`) et redémarre. Garde ta clé d'API Anthropic dans `.env` : tu pourras ainsi
+revenir à Claude sans recopier la clé.
+
+Vérifie avec `ollama ps`, après un premier message : la colonne `PROCESSOR` doit afficher
+`100% CPU` et `CONTEXT` `4096`.
+
+### Les deux réglages
+
+- **`OLLAMA_CONTEXT_LENGTH=4096`** : la taille de la fenêtre de contexte. Les requêtes du bot
+  restent sous 1 500 tokens (README, [La fenêtre de
+  contexte](../README.md#choisir-le-modèle-de-langage--claude-ou-ollama)) ; une fenêtre plus
+  petite occupe moins de mémoire.
+- **`OLLAMA_KEEP_ALIVE=-1`** : garder le modèle en mémoire indéfiniment. Par défaut, Ollama
+  le décharge après 5 minutes sans requête, et le message suivant attend qu'il soit relu sur
+  la carte SD : 35,6 s pour `ministral-3:3b`, en plus de la réponse. Le prix : 3,1 Go de
+  mémoire occupés en permanence une fois le modèle chargé. Ollama ne charge le modèle qu'à la
+  première requête : tant que le bot reste sur Claude, ce réglage ne coûte rien.
+
+Le tout premier message après l'installation a pris **143,6 s** : le modèle était lu pour la
+première fois sur la carte SD.
+
+### Mesures
+
+Ollama 0.34.4 sur le Pi 5 (8 Go), modèle déjà chargé (sauf la colonne « Chargement »).
+5 questions, chacune dans une conversation neuve, avec `uv run jcvd ask` : « J'ai peur
+d'échouer », « Comment devenir meilleur ? », « C'est quoi le bonheur pour toi ? », « Je
+n'arrive pas à me motiver le matin », « Que penses-tu de l'amour ? ».
+
+| Modèle | Mémoire | Chargement | Durée par réponse | Mots (cible 60–120) | Phrases (cible 2–3) | Lecture | Écriture |
+|---|---|---|---|---|---|---|---|
+| `ministral-3:3b` | 3,1 Go | 35,6 s | 48,0 à 89,3 s | 118 à 233 | 6 à 9 | 20,9 tokens/s | 3,3 tokens/s |
+| `gemma3:4b` | 3,4 Go | 41,2 s | 77,6 à 106,9 s | 128 à 175 | 10 à 18 | 21,3 tokens/s | 3,8 tokens/s |
+| `gemma3:1b` | 1,2 Go | 2,7 s | 5,7 à 19,7 s | 4 à 44 | 1 à 4 | 51,2 tokens/s | 13,5 tokens/s |
+| Claude (rappel, [section 11](#11-mesures-sur-le-pi)) | — | — | 6,8 s | | | | |
+
+« Mémoire » est la colonne `SIZE` de `ollama ps`. « Lecture » et « Écriture » viennent des
+compteurs d'Ollama (`prompt_eval_duration` et `eval_duration` de son API), mesurés sur une
+requête à part : le même texte, compté 920 tokens par Gemma et 1 613 par Ministral (chaque
+modèle découpe le texte à sa façon). Le cache de fichiers de Linux n'a pas pu être vidé entre
+deux modèles : les temps de chargement sont donc un peu optimistes. Pendant les mesures, le Pi
+est monté à 72 °C, sans ralentissement (`vcgencmd get_throttled` = `0x0`).
+
+**Pourquoi c'est si lent ?** Un modèle de langage écrit un token à la fois, et chaque token
+demande de parcourir tous les paramètres du modèle en mémoire. Lire le prompt va plus vite,
+car tous ses tokens se traitent ensemble. Pour `ministral-3:3b`, une réponse de 250 tokens
+prend donc environ 75 s rien qu'à l'écriture (250 ÷ 3,3), alors que relire la partie nouvelle
+du prompt (environ 150 tokens, le reste venant du cache) prend quelques secondes. Le premier
+message d'une conversation est plus long : sans cache, les 900 tokens du prompt se lisent en
+plus de 40 s. Les modèles trop bavards le paient doublement, car chaque mot en trop ajoute du
+temps d'attente.
+
+**Un modèle plus petit ?** `gemma3:1b` répond en 6 à 20 s, mais ses réponses sont
+inutilisables : « L'échec, tu comprends ? » (4 mots) pour « J'ai peur d'échouer », ou des
+phrases qui n'existent pas en français (« une énergie qui ne se loin de passera sans
+nuisserie »). Un milliard de paramètres ne suffit pas pour tenir ce prompt.
+
+Pendant l'attente, Telegram affiche « en train d'écrire… » jusqu'à la réponse (README,
+[Points de conception](../README.md#étape-4--brancher-le-bot-sur-telegram-jcvd-telegram-telegram_apppy)).
