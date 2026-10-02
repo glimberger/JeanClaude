@@ -45,18 +45,29 @@ in
   # lib.mkIf : cette configuration n'existe que si `enable = true`.
   config = lib.mkIf cfg.enable {
     # home-manager écrit ce service dans ~/.config/systemd/user/jcvd-bot.service, l'active au
-    # démarrage et le relance quand sa définition change. Chaque réglage est expliqué dans
-    # deploy/jcvd-bot.service.
+    # démarrage et le relance quand sa définition change. Les réglages sont les mêmes que dans
+    # deploy/jcvd-bot.service : garde les deux fichiers synchronisés.
     systemd.user.services.jcvd-bot = {
       Unit.Description = "Bot Telegram JCVD (RAG)";
 
       Service = {
+        # Le bot cherche .env, .venv et data/ dans le dossier du projet.
         WorkingDirectory = cfg.directory;
+        # --env-file : la clé d'API et le token Telegram sont lus dans .env, exactement comme en
+        # lançant le bot à la main. --frozen : utilise les versions de uv.lock telles quelles,
+        # sans jamais les modifier.
         ExecStart = "${lib.getExe cfg.package} run --frozen --env-file .env jcvd telegram";
+        # Relance le bot 10 s après un plantage. Au démarrage du Pi, si le réseau n'est pas
+        # encore prêt, le bot échoue à joindre Telegram, s'arrête, et cette relance fait la
+        # suite.
         Restart = "on-failure";
         RestartSec = 10;
         Environment = [
+          # Sans ça, Python garde ses logs en mémoire tampon et ils arrivent en retard dans le
+          # journal.
           "PYTHONUNBUFFERED=1"
+          # Pas de barres de progression (chargement du modèle) : dans le journal, elles
+          # deviennent des lignes illisibles ("[146B blob data]").
           "TQDM_DISABLE=1"
         ];
       };
