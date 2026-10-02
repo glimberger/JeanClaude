@@ -62,6 +62,13 @@ in
         # suite.
         Restart = "on-failure";
         RestartSec = 10;
+        # À l'arrêt, n'envoie le signal SIGTERM qu'au processus principal (uv), qui le transmet
+        # à Python. Par défaut, systemd l'envoie à tous les processus du service : Python le
+        # recevait deux fois (de systemd et de uv), et le second interrompait l'arrêt propre de
+        # la librairie Telegram (avertissement "coroutine 'Updater.stop' was never awaited", et
+        # derniers messages pas marqués comme lus, donc possiblement traités une seconde fois
+        # au redémarrage).
+        KillMode = "mixed";
         Environment = [
           # Sans ça, Python garde ses logs en mémoire tampon et ils arrivent en retard dans le
           # journal.
