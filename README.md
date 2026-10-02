@@ -24,6 +24,25 @@ projet n'entrent pas en conflit avec celles d'autres projets Python de ta machin
 
 Au premier lancement, le modèle d'embeddings (quelques centaines de Mo) est téléchargé automatiquement.
 
+### Option : avec Nix
+
+Si tu utilises [Nix](https://nixos.org), le dépôt fournit un environnement de développement
+(`flake.nix`) avec Python et uv, aux versions figées dans `flake.lock` : rien à installer avec
+Homebrew.
+
+```bash
+nix develop              # ouvre un shell avec Python et uv
+uv sync                  # puis comme ci-dessus
+```
+
+Avec [direnv](https://direnv.net), ce shell s'active tout seul quand tu entres dans le dossier
+(`.envrc` contient `use flake`) : lance `direnv allow` une fois.
+
+Dans ce shell, uv crée `.venv` avec le Python fourni par Nix. Un `.venv` lié à un Python
+installé ailleurs casse quand ce Python disparaît (par exemple désinstallé de Homebrew) ; uv le
+recrée alors tout seul au prochain `uv run`. Les dépendances Python restent gérées par uv
+(`pyproject.toml`, `uv.lock`), avec ou sans Nix.
+
 ## Les étapes
 
 Tout passe par une seule commande, `jcvd` (`uv run jcvd --help` pour l'aide) :
@@ -306,6 +325,9 @@ permanence.
 ```
 JeanClaude/
 ├── pyproject.toml / uv.lock     dépendances et commande `jcvd` (gérées par uv)
+├── flake.nix / flake.lock       environnement de développement Nix (optionnel : Python + uv)
+├── .envrc                       active cet environnement avec direnv
+├── .talismanrc                  exceptions du hook Talisman pour flake.lock et .envrc
 ├── .env.example                 modèle du fichier de secrets (.env, non versionné)
 ├── LICENSE                      licence MIT
 ├── data/
