@@ -252,6 +252,13 @@ sans droits administrateur, et se gère sans `sudo`. Il :
 - relance le bot 10 s après un plantage (`Restart=on-failure`). Si le réseau n'est pas prêt
   au démarrage, le bot s'arrête faute de joindre Telegram, et c'est cette relance qui fait la
   suite ;
+- à l'arrêt, n'envoie le signal d'arrêt (`SIGTERM`) qu'à `uv`, qui le transmet au bot
+  (`KillMode=mixed`). Par défaut, systemd l'envoie à tous les processus du service : le bot le
+  recevait deux fois, une fois de systemd et une fois de `uv`, et le second interrompait son
+  arrêt propre. Les journaux montraient alors
+  `RuntimeWarning: coroutine 'Updater.stop' was never awaited`, et les derniers messages
+  n'étaient pas marqués comme lus auprès de Telegram : ils pouvaient être traités une seconde
+  fois au redémarrage ;
 - démarre avec le Pi, grâce au réglage « linger » de l'étape 5.
 
 ---
