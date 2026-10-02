@@ -1,12 +1,15 @@
 import asyncio
 import logging
+import time
 from types import SimpleNamespace
 
 import anthropic
 import httpx2
+import pytest
 from telegram import Update
 from telegram.error import Conflict
 
+from jcvd_bot import telegram_app
 from jcvd_bot.telegram_app import (
     build_application,
     is_allowed,
@@ -21,11 +24,13 @@ ALLOWED_ID = 42
 
 
 class FakeJCVD:
-    def __init__(self, answer="Ah tu vois...", error=None):
-        self.answer, self.error = answer, error
+    def __init__(self, answer="Ah tu vois...", error=None, delay=0):
+        self.answer, self.error, self.delay = answer, error, delay
         self.resets = []
 
     def respond(self, text, conversation_id):
+        # Simule un modèle lent (Ollama sur le Pi) : bloquant, comme le vrai respond().
+        time.sleep(self.delay)
         if self.error:
             raise self.error
         return self.answer, []
@@ -34,15 +39,22 @@ class FakeJCVD:
         self.resets.append(conversation_id)
 
 
-def run_handler(handler, jcvd, user_id=ALLOWED_ID, text="salut"):
-    """Appelle un handler avec de faux objets Telegram et renvoie les messages envoyés."""
+def run_handler(handler, jcvd, user_id=ALLOWED_ID, text="salut", events=None):
+    """
+    Appelle un handler avec de faux objets Telegram et renvoie les messages envoyés.
+
+    `events`, si fourni, reçoit dans l'ordre les messages et les indicateurs « en train
+    d'écrire » ("typing").
+    """
     sent = []
+    events = [] if events is None else events
 
     async def reply_text(message):
         sent.append(message)
+        events.append(message)
 
     async def send_chat_action(*args):
-        pass
+        events.append("typing")
 
     update = SimpleNamespace(
         effective_user=SimpleNamespace(id=user_id, full_name="Test"),
@@ -79,6 +91,32 @@ def test_api_error_gives_an_in_character_message():
     error = anthropic.APIConnectionError(request=httpx2.Request("POST", "https://api.anthropic.com"))
     [answer] = run_handler(on_message, FakeJCVD(error=error))
     assert "connecter" in answer
+
+
+@pytest.fixture
+def fast_typing():
+    """Renvoie l'indicateur toutes les 10 ms au lieu de 4 s, pour des tests rapides."""
+    normal = telegram_app.TYPING_REFRESH_SECONDS
+    telegram_app.TYPING_REFRESH_SECONDS = 0.01
+    yield
+    telegram_app.TYPING_REFRESH_SECONDS = normal
+
+
+def test_typing_indicator_lasts_until_the_answer(fast_typing):
+    # Réponse lente : l'indicateur doit être renvoyé plusieurs fois, puis s'arrêter avant
+    # l'envoi de la réponse.
+    events = []
+    run_handler(on_message, FakeJCVD(delay=0.1), events=events)
+    assert events.count("typing") >= 3
+    assert events[-1] == "Ah tu vois..."
+
+
+def test_typing_indicator_stops_on_error(fast_typing):
+    error = anthropic.APIConnectionError(request=httpx2.Request("POST", "http://localhost:11434"))
+    events = []
+    run_handler(on_message, FakeJCVD(error=error, delay=0.05), events=events)
+    assert "typing" in events
+    assert "connecter" in events[-1]
 
 
 def test_reset_command():
