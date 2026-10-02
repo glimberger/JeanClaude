@@ -15,13 +15,17 @@ import logging
 import anthropic
 from telegram import Update
 from telegram.constants import ChatAction, MessageLimit
-from telegram.error import Conflict, NetworkError
+from telegram.error import Conflict, NetworkError, TelegramError
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 from jcvd_bot.config import LLM_BACKEND
 from jcvd_bot.logs import traced
 
 log = logging.getLogger(__name__)
+
+# Telegram efface l'indicateur « en train d'écrire… » au bout d'environ 5 secondes. On le
+# renvoie un peu plus souvent pour qu'il reste affiché sans clignoter.
+TYPING_REFRESH_SECONDS = 4
 
 
 @traced
@@ -73,12 +77,31 @@ async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 @traced
+async def keep_typing(context: ContextTypes.DEFAULT_TYPE, chat_id):
+    """
+    Affiche « en train d'écrire… » dans Telegram jusqu'à ce qu'on annule cette tâche.
+
+    Un seul envoi suffit avec Claude (environ 7 s par réponse), mais pas avec Ollama sur le
+    Pi, où une réponse prend environ une minute : l'indicateur disparaîtrait au bout de 5 s
+    et la personne croirait le bot planté. On le renvoie donc en boucle, dans une tâche
+    asyncio qui tourne en parallèle de la génération.
+    """
+    while True:
+        try:
+            await context.bot.send_chat_action(chat_id, ChatAction.TYPING)
+        except TelegramError as error:
+            # Un indicateur perdu n'a pas d'importance : on n'interrompt pas la réponse pour ça.
+            log.debug("Indicateur « en train d'écrire » non envoyé : %s", error)
+        await asyncio.sleep(TYPING_REFRESH_SECONDS)
+
+
+@traced
 async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_allowed(update, context):
         return
 
-    # Affiche "en train d'écrire..." dans Telegram pendant que Claude génère la réponse.
-    await context.bot.send_chat_action(update.effective_chat.id, ChatAction.TYPING)
+    # Affiche "en train d'écrire..." dans Telegram pendant que le modèle génère la réponse.
+    typing = asyncio.create_task(keep_typing(context, update.effective_chat.id))
 
     try:
         # respond() est bloquant (recherche + appel à Claude, plusieurs secondes) :
@@ -99,6 +122,9 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         answer = "Je n'arrive pas à me connecter... comme l'air, ça existe et ça n'existe pas."
     else:
         log.info("Réponse envoyée (%d citations utilisées)", len(citations))
+    finally:
+        # Réponse prête (ou erreur) : on arrête l'indicateur avant d'envoyer le message.
+        typing.cancel()
 
     parts = split_message(answer)
     log.debug("Envoi de la réponse en %d message(s) Telegram", len(parts))

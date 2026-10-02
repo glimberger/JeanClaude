@@ -48,7 +48,13 @@ in
     # démarrage et le relance quand sa définition change. Les réglages sont les mêmes que dans
     # deploy/jcvd-bot.service : garde les deux fichiers synchronisés.
     systemd.user.services.jcvd-bot = {
-      Unit.Description = "Bot Telegram JCVD (RAG)";
+      Unit = {
+        Description = "Bot Telegram JCVD (RAG)";
+        # Avec Ollama sur le Pi (services.ollama de home-manager, voir docs/DEPLOIEMENT_PI.md) :
+        # démarre le bot après lui. Ce n'est qu'un ordre de démarrage, pas une dépendance : sans
+        # Ollama (LLM_BACKEND=claude, ou Ollama sur une autre machine), la ligne n'a aucun effet.
+        After = [ "ollama.service" ];
+      };
 
       Service = {
         # Le bot cherche .env, .venv et data/ dans le dossier du projet.

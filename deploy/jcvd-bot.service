@@ -13,6 +13,10 @@
 
 [Unit]
 Description=Bot Telegram JCVD (RAG)
+# Avec Ollama sur le Pi (service utilisateur ollama.service, voir docs/DEPLOIEMENT_PI.md) :
+# démarre le bot après lui. Ce n'est qu'un ordre de démarrage, pas une dépendance : sans
+# Ollama (LLM_BACKEND=claude, ou Ollama sur une autre machine), la ligne n'a aucun effet.
+After=ollama.service
 
 [Service]
 WorkingDirectory=%h/projects/JeanClaude
