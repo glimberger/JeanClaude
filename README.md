@@ -249,7 +249,9 @@ Pour que le bot Telegram tourne en permanence, installe-le sur un Raspberry Pi e
 s'il plante. La procédure complète (carte SD, clé SSH, installation, secrets, service, mise à
 jour) et les mesures relevées sur un Pi 5 sont dans
 [docs/DEPLOIEMENT_PI.md](docs/DEPLOIEMENT_PI.md) ; les commandes pour gérer le service et lire
-ses logs, dans sa [section 9](docs/DEPLOIEMENT_PI.md#9-installer-et-gérer-le-service).
+ses logs, dans sa [section 9](docs/DEPLOIEMENT_PI.md#9-installer-et-gérer-le-service). Si ton
+Pi est géré avec Nix et home-manager, le service s'installe avec un module : voir la
+[section 12](docs/DEPLOIEMENT_PI.md#12-variante-avec-nix-et-home-manager).
 
 ## Mode debug
 
@@ -312,7 +314,8 @@ JeanClaude/
 │   ├── eval_search.json         jeu d'évaluation de la recherche (`jcvd eval`)
 │   └── chroma/                  index vectoriel, généré par `jcvd index` (non versionné)
 ├── deploy/
-│   └── jcvd-bot.service         service systemd pour faire tourner le bot sur un Pi
+│   ├── jcvd-bot.service         service systemd pour faire tourner le bot sur un Pi
+│   └── jcvd-bot.nix             le même service, en module home-manager (Pi géré avec Nix)
 ├── docs/
 │   ├── GUIDE_RAG.md             comprendre le RAG depuis zéro
 │   └── DEPLOIEMENT_PI.md        installer le bot sur un Raspberry Pi
