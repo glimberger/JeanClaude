@@ -331,7 +331,6 @@ JeanClaude/
 ├── pyproject.toml / uv.lock     dépendances et commande `jcvd` (gérées par uv)
 ├── flake.nix / flake.lock       environnement de développement Nix (optionnel : Python + uv)
 ├── .envrc                       active cet environnement avec direnv
-├── .talismanrc                  exceptions du hook Talisman pour flake.lock et .envrc
 ├── .env.example                 modèle du fichier de secrets (.env, non versionné)
 ├── LICENSE                      licence MIT
 ├── data/
